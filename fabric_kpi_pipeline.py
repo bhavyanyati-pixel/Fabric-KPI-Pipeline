@@ -33,7 +33,10 @@ SERVICE_ACCOUNT_JSON = os.environ.get("SERVICE_ACCOUNT_JSON", "")
 
 SOURCE_SPREADSHEET_ID_OR_URL = os.environ.get(
     "SOURCE_SPREADSHEET_ID_OR_URL", "1rLcgwVua5XXyY7lZx6G16xqmNvbwyp_BWS_y61TBssA"
-)
+) or "1rLcgwVua5XXyY7lZx6G16xqmNvbwyp_BWS_y61TBssA"
+# ^ the `or` fallback matters: if the env var/secret exists but is set to an
+# empty string (common when a GitHub secret is missing/blank), os.environ.get
+# would otherwise silently return "" instead of falling back to the default.
 
 # ---- Local working folders / files (mirrors the original notebook layout) ----
 # Set PIPELINE_BASE_DIR to relocate all working folders under one root
@@ -83,9 +86,9 @@ SYNC_JOBS = [
 GMAIL_CREDENTIALS_CSV = os.environ.get("GMAIL_CREDENTIALS_CSV", r"D:\Credentials\Gmail Credentials.csv")
 # If these two env vars are set (as they are in GitHub Actions, from Secrets),
 # they're used directly and GMAIL_CREDENTIALS_CSV is skipped entirely.
-GMAIL_SENDER_EMAIL = os.environ.get("GMAIL_SENDER_EMAIL", "")
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO = os.environ.get("EMAIL_TO") or None  # None -> sends the report to the same Gmail address used to send it
+GMAIL_SENDER_EMAIL = os.environ.get("GMAIL_SENDER_EMAIL", "").strip().replace("\xa0", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").strip().replace("\xa0", "")
+EMAIL_TO = (os.environ.get("EMAIL_TO", "") or "").strip().replace("\xa0", "") or None  # None -> sends the report to the same Gmail address used to send it
 EMAIL_SUBJECT_SUCCESS = "Fabric KPI Pipeline — Success"
 EMAIL_SUBJECT_FAILURE = "Fabric KPI Pipeline — FAILED"
 SMTP_SERVER = "smtp.gmail.com"
@@ -144,6 +147,12 @@ def open_spreadsheet(client, id_or_url):
     # will make Google return its generic "unable to open file" HTML page
     # instead of a clean auth/not-found error.
     cleaned = id_or_url.strip().strip('"').strip("'")
+    if not cleaned:
+        raise RuntimeError(
+            "SOURCE_SPREADSHEET_ID_OR_URL is empty. Check that the GitHub secret/variable "
+            "of that name either isn't referenced in the workflow, or is set to a real "
+            "spreadsheet ID/URL (not blank)."
+        )
     if cleaned != id_or_url:
         log.warning(
             "SOURCE_SPREADSHEET_ID_OR_URL had leading/trailing whitespace or quotes; "
@@ -419,6 +428,22 @@ def send_email(subject, body_text, body_html):
     else:
         sender_email, sender_password = read_gmail_credentials(GMAIL_CREDENTIALS_CSV)
     to_addr = EMAIL_TO or sender_email
+
+    # Fail fast with a clear message if any address still has non-ASCII
+    # characters (e.g. a stray \xa0 or other invisible unicode character),
+    # instead of letting smtplib raise an opaque UnicodeEncodeError later.
+    for field_name, value in (("sender_email", sender_email), ("to_addr", to_addr)):
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError as e:
+            bad_char = value[e.start:e.end]
+            raise RuntimeError(
+                f"{field_name}={value!r} contains a non-ASCII character "
+                f"({bad_char!r}, U+{ord(bad_char):04X}) at position {e.start}. "
+                "This is usually a non-breaking space or other invisible character "
+                "picked up from copy-pasting into a GitHub secret or spreadsheet cell. "
+                "Re-type the value manually to fix it."
+            ) from e
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
