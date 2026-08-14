@@ -116,21 +116,54 @@ SCOPES_READWRITE = [
 # ============================================================================
 def get_client(scopes):
     if SERVICE_ACCOUNT_JSON:
-        info = json.loads(SERVICE_ACCOUNT_JSON)
+        try:
+            info = json.loads(SERVICE_ACCOUNT_JSON)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                "SERVICE_ACCOUNT_JSON is set but is not valid JSON. If this comes from a "
+                "GitHub secret, make sure the ENTIRE key file contents were pasted in, "
+                "with no extra quoting or truncation."
+            ) from e
+        log.info(f"    Using service account (from JSON env var): {info.get('client_email', '<unknown>')}")
         creds = Credentials.from_service_account_info(info, scopes=scopes)
         return gspread.authorize(creds)
 
     creds_path = Path(SERVICE_ACCOUNT_FILE)
     if not creds_path.exists():
         raise FileNotFoundError(f"Service account file not found at: {SERVICE_ACCOUNT_FILE}")
+    with open(creds_path) as f:
+        info = json.load(f)
+    log.info(f"    Using service account (from file {SERVICE_ACCOUNT_FILE}): {info.get('client_email', '<unknown>')}")
     creds = Credentials.from_service_account_file(str(creds_path), scopes=scopes)
     return gspread.authorize(creds)
 
 
 def open_spreadsheet(client, id_or_url):
-    if id_or_url.startswith("http"):
-        return client.open_by_url(id_or_url)
-    return client.open_by_key(id_or_url)
+    # Defensive cleanup: env vars / GitHub secrets can easily pick up stray
+    # quotes, surrounding whitespace, or a trailing newline, all of which
+    # will make Google return its generic "unable to open file" HTML page
+    # instead of a clean auth/not-found error.
+    cleaned = id_or_url.strip().strip('"').strip("'")
+    if cleaned != id_or_url:
+        log.warning(
+            "SOURCE_SPREADSHEET_ID_OR_URL had leading/trailing whitespace or quotes; "
+            "using cleaned value."
+        )
+
+    try:
+        if cleaned.startswith("http"):
+            return client.open_by_url(cleaned)
+        return client.open_by_key(cleaned)
+    except gspread.exceptions.APIError as e:
+        raise RuntimeError(
+            "Could not open the Google Sheet with "
+            f"SOURCE_SPREADSHEET_ID_OR_URL={cleaned!r}. This usually means one of:\n"
+            "  1) The ID/URL is wrong (check for a copy-paste error or stray characters)\n"
+            "  2) The sheet has NOT been shared with the service account's client_email\n"
+            "  3) The Google Sheets API and/or Drive API is not enabled on that GCP project\n"
+            "  4) The service account key is invalid or revoked\n"
+            f"Original gspread error: {e}"
+        ) from e
 
 
 def col_letter_to_index(letter):
