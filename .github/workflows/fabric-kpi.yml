@@ -1,0 +1,42 @@
+name: Fabric KPI Pipeline
+
+on:
+  schedule:
+    # Runs every day at 03:00 UTC (~8:30 AM IST). Edit the cron to change timing.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}   # lets you click "Run workflow" manually in the Actions tab
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          SOURCE_SPREADSHEET_ID_OR_URL: ${{ secrets.SOURCE_SPREADSHEET_ID_OR_URL }}
+          SYNC_SPREADSHEET_ID: ${{ secrets.SYNC_SPREADSHEET_ID }}
+          ENABLE_SYNC_TO_SHEETS: "true"
+          GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          PIPELINE_BASE_DIR: output
+        run: python fabric_kpi_pipeline.py
+
+      - name: Upload output CSVs
+        if: always()   # upload whatever was produced, even on partial failure
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabric-kpi-output
+          path: output/
+          retention-days: 30
