@@ -24,8 +24,6 @@ jobs:
       - name: Run pipeline
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-          SOURCE_SPREADSHEET_ID_OR_URL: ${{ secrets.SOURCE_SPREADSHEET_ID_OR_URL }}
-          SYNC_SPREADSHEET_ID: ${{ secrets.SYNC_SPREADSHEET_ID }}
           ENABLE_SYNC_TO_SHEETS: "true"
           GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
