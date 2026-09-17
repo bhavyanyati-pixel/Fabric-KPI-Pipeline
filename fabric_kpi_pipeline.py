@@ -281,7 +281,7 @@ def stage4_extract_wip():
 def stage5_build_consumption():
     df = pd.read_csv(SKU_MAPPING_FILE)
     fab_pairs = [
-        ("FAB ID", "Consp_FabID_1"),
+        ("FABID", "Consp_FabID_1"),
         ("FabID_2", "Consp_FabID_2"),
         ("FabID_3", "Consp_FabID_3"),
         ("FabID_4", "Consp_FabID_4"),
