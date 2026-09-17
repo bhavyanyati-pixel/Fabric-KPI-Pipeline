@@ -285,11 +285,11 @@ def stage5_build_consumption():
         ("FabID_2", "Consp_FabID_2"),
         ("FabID_3", "Consp_FabID_3"),
         ("FabID_4", "Consp_FabID_4"),
-        ("FabID_5", "FabID_5 Consump"),
+        ("FabID_5", "FabID_5Consump"),
     ]
     chunks = []
     for fab_col, consp_col in fab_pairs:
-        chunk = df[["SKU CODE", fab_col, consp_col]].copy()
+        chunk = df[["SKUCODE", fab_col, consp_col]].copy()
         chunk.columns = ["SKU", "Fabric", "Consumption"]
         chunk = chunk.dropna(subset=["SKU", "Fabric"])
         chunks.append(chunk)
